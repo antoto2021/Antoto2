@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Jeu de Roulette</title>
+  <style>
+    /* 
+      Styles généraux de la page
+      - On centre le texte
+      - On utilise une police sans-serif
+      - On met un fond gris clair
+    */
+    body {
+      text-align: center;
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 20px;
+    }
+
+    /* Style du titre principal */
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    /* 
+      Conteneur principal de la roulette
+      - Positionné en "relative" pour pouvoir placer la flèche (#pointer) en "absolute" par-dessus
+      - Ajout d'une marge en haut pour éviter que la flèche chevauche le titre
+    */
+    #rouletteContainer {
+      position: relative;
+      display: inline-block;
+      margin-top: 60px; /* Espace pour que la flèche ne chevauche pas le titre */
+    }
+
+    /* 
+      Le canvas où la roulette est dessinée
+      - Bordure noire
+      - Fond blanc
+      - On lui ajoute une marge en haut pour l'esthétique
+    */
+    canvas {
+      border: 2px solid #000;
+      background: #fff;
+      margin-top: 20px;
+    }
+
+    /* 
+      La flèche pointant vers le bas
+      - position: absolute => se positionne par rapport au #rouletteContainer
+      - top: -35px => la flèche sort de 35px au-dessus du conteneur
+      - left: 50% => centrée horizontalement
+      - transform: translateX(-50%) => permet de la recentrer exactement
+      - border-top: 30px solid #000 => c'est ce qui crée la pointe de la flèche
+    */
+    #pointer {
+      position: absolute;
+      top: -35px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 20px solid transparent;
+      border-right: 20px solid transparent;
+      border-top: 30px solid #000;
+      z-index: 2; /* Pour être au-dessus du canvas */
+    }
+
+    /* 
+      Styles des boutons
+      - Marges
+      - Padding pour un peu d'espace
+      - Cursor pointer pour indiquer qu'ils sont cliquables
+    */
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    /* 
+      Le menu modal qui s'affiche quand on tombe sur "activité fun"
+      - position: fixed => recouvre tout l'écran
+      - display: none => caché par défaut, on le passera en flex pour l'afficher
+      - background semi-transparent pour l'effet "overlay"
+      - justify-content et align-items pour centrer le contenu
+    */
+    #funMenu {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; /* Passé à 'flex' quand on clique sur l'activité fun */
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* 
+      Le contenu de la fenêtre modale (carte blanche centrée)
+      - Fond blanc
+      - Bords arrondis
+      - Un peu de padding
+      - Largeur fixe pour un affichage cohérent
+    */
+    #funMenu .content {
+      background: #fff;
+      padding: 20px;
+      border-radius: 5px;
+      text-align: center;
+      width: 300px;
+    }
+
+    /* Styles supplémentaires pour les éléments à l'intérieur de la modale */
+    #funMenu select, 
+    #funMenu input[type="radio"] {
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Titre de la page -->
+  <h1>Jeu de Roulette</h1>
+
+  <!-- Conteneur principal de la roulette (canvas + flèche) -->
+  <div id="rouletteContainer">
+    <!-- Flèche -->
+    <div id="pointer"></div>
+    <!-- Canvas où sera dessinée la roulette -->
+    <canvas id="roulette" width="500" height="500"></canvas>
+  </div>
+
+  <!-- Boutons de contrôle (Lancer / Arrêter) -->
+  <div>
+    <button id="start">Lancer le jeu</button>
+    <button id="stop">Arrêter</button>
+  </div>
+
+  <!-- Menu modal pour le choix d'activité fun -->
+  <div id="funMenu">
+    <div class="content">
+      <h2>Choisissez votre activité fun</h2>
+      <label for="funSelect">Activité :</label><br>
+      <!-- Liste déroulante des activités fun -->
+      <select id="funSelect">
+        <option value="karting">Karting</option>
+        <option value="bowling">Bowling</option>
+        <option value="laser game">Laser Game</option>
+        <option value="escape game">Escape Game</option>
+      </select>
+      <br>
+      <!-- Question sur la participation en famille -->
+      <p>Voulez-vous que cette activité se fasse en famille ?</p>
+      <label>
+        <input type="radio" name="family" value="Oui" checked> Oui
+      </label>
+      <label>
+        <input type="radio" name="family" value="Non"> Non
+      </label>
+      <br><br>
+      <!-- Bouton de validation de l'activité fun -->
+      <button id="confirmFun">Valider</button>
+    </div>
+  </div>
+
+  <script>
+    // Récupération du canvas et de son contexte 2D
+    const canvas = document.getElementById('roulette');
+    const ctx = canvas.getContext('2d');
+
+    // Coordonnées du centre du canvas et rayon de la roue
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const radius = Math.min(centerX, centerY) - 10;
+
+    // Liste des segments de la roue
+    const segments = [
+      "cinéma", 
+      "restaurant", 
+      "balade en vélo", 
+      "balade a pied", 
+      "visite musée", 
+      "activité fun"
+    ];
+
+    // Angle par segment : 2π / nombre de segments
+    const segmentAngle = (2 * Math.PI) / segments.length;
+
+    // Couleurs pour chaque segment
+    const colors = [
+      "#FF5733", // Cinéma
+      "#33FF57", // Restaurant
+      "#3357FF", // Balade en vélo
+      "#FF33A8", // Balade à pied
+      "#A833FF", // Visite musée
+      "#33FFF2"  // Activité fun
+    ];
+
+    // Variables pour l'animation
+    let angle = 0;            // Angle courant de la roue
+    let angularVelocity = 0;  // Vitesse de rotation
+    let spinning = false;     // Indique si la roue tourne
+    let deceleration = false; // Indique si on est en phase de décélération
+
+    /**
+     * Fonction de dessin de la roue
+     * - Efface le canvas
+     * - Dessine chaque segment
+     * - Dessine le texte
+     * - Dessine un petit cercle décoratif au centre
+     */
+    function drawWheel() {
+      // On efface le canvas avant de redessiner
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Boucle sur tous les segments
+      for (let i = 0; i < segments.length; i++) {
+        // Calcul de l'angle de début et de fin du segment
+        const startAngle = angle + i * segmentAngle;
+        const endAngle = startAngle + segmentAngle;
+
+        // Dessin du secteur
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.closePath();
+
+        // Choix de la couleur de remplissage
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fill();
+        ctx.stroke();
+
+        // Dessin du texte sur le segment
+        ctx.save();
+        // On se déplace au centre du canvas
+        ctx.translate(centerX, centerY);
+        // On tourne pour écrire dans le bon sens (au milieu du segment)
+        ctx.rotate(startAngle + segmentAngle / 2);
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#000";
+        ctx.font = "bold 18px Arial";
+        // On place le texte près du bord du cercle
+        ctx.fillText(segments[i], radius - 10, 10);
+        ctx.restore();
+      }
+
+      // Dessin du cercle central (petit rond blanc)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 30, 0, 2 * Math.PI);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    /**
+     * Fonction d'animation
+     * - Appelée en boucle via requestAnimationFrame
+     * - Met à jour l'angle en fonction de la vitesse
+     * - Applique la décélération si demandé
+     * - Détermine le résultat quand la vitesse devient très faible
+     */
+    function update() {
+      if (spinning) {
+        // On incrémente l'angle en fonction de la vitesse
+        angle += angularVelocity;
+
+        // Si on est en phase de décélération
+        if (deceleration) {
+          // Facteur de décélération (à ajuster)
+          angularVelocity *= 0.98; 
+          // Si la vitesse est presque nulle, on arrête
+          if (angularVelocity < 0.001) {
+            angularVelocity = 0;
+            spinning = false;
+            deceleration = false;
+            // Une fois arrêtée, on détermine le résultat
+            determineResult();
+          }
+        }
+      }
+      // On dessine la roue avec le nouvel angle
+      drawWheel();
+      // On redemande à animer le prochain frame
+      requestAnimationFrame(update);
+    }
+
+    /**
+     * Fonction qui détermine quel segment est "gagnant"
+     * - La flèche est positionnée en haut du canvas
+     * - Par défaut, l'angle 0 dans un canvas HTML est à droite
+     * - On ajoute donc π/2 (90°) pour aligner la référence en haut
+     * - Puis on calcule l'index du segment en fonction de la division de l'angle total
+     */
+    function determineResult() {
+      // On ramène l'angle entre 0 et 2π
+      let normalizedAngle = angle % (2 * Math.PI);
+      if (normalizedAngle < 0) {
+        normalizedAngle += 2 * Math.PI;
+      }
+
+      // On décale l'angle pour que 0 soit en haut (ajout de π/2)
+      let pointerAngle = (normalizedAngle + Math.PI / 2) % (2 * Math.PI);
+
+      // Calcul de l'index : on inverse (2π - pointerAngle) pour savoir
+      // quel segment est situé sous la flèche
+      let index = Math.floor(((2 * Math.PI - pointerAngle) % (2 * Math.PI)) / segmentAngle);
+
+      // On récupère le segment correspondant
+      const result = segments[index];
+
+      // Si c'est "activité fun", on affiche la modale
+      if (result === "activité fun") {
+        document.getElementById('funMenu').style.display = 'flex';
+      } else {
+        // Sinon, on affiche simplement le résultat
+        alert("Résultat : " + result);
+      }
+    }
+
+    /**
+     * Gestion du bouton "Lancer"
+     * - Initialise la vitesse de rotation
+     * - Passe l'état "spinning" à true
+     */
+    document.getElementById('start').addEventListener('click', () => {
+      if (!spinning) {
+        spinning = true;
+        deceleration = false;
+        // On définit la vitesse initiale de rotation (modifiez selon vos préférences)
+        angularVelocity = 0.3;
+      }
+    });
+
+    /**
+     * Gestion du bouton "Arrêter"
+     * - Passe la roue en phase de décélération
+     */
+    document.getElementById('stop').addEventListener('click', () => {
+      if (spinning) {
+        deceleration = true;
+      }
+    });
+
+    /**
+     * Gestion de la validation du choix d'activité fun
+     * - Récupère l'activité choisie
+     * - Récupère la réponse sur la participation en famille
+     * - Ferme la fenêtre modale
+     * - Affiche le résultat final
+     */
+    document.getElementById('confirmFun').addEventListener('click', () => {
+      // Récupération du choix dans la liste déroulante
+      const funSelect = document.getElementById('funSelect').value;
+      // Récupération du choix "en famille" ou non
+      const familyRadios = document.getElementsByName('family');
+      let familyChoice = "Oui";
+      for (const radio of familyRadios) {
+        if (radio.checked) {
+          familyChoice = radio.value;
+          break;
+        }
+      }
+      // On masque la fenêtre modale
+      document.getElementById('funMenu').style.display = 'none';
+      // On affiche le résultat final
+      alert(
+        "Résultat : activité fun - " + funSelect +
+        " (En famille : " + familyChoice + ")"
+      );
+    });
+
+    // Lancement de la boucle d'animation au chargement
+    update();
+  </script>
+</body>
+</html>
